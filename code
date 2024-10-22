@@ -1,0 +1,371 @@
+
+
+from tkinter import ttk
+from tkinter import messagebox
+import tkinter as tk
+import sqlite3
+from docx import Document
+import re
+import os 
+
+# Function to create the SQLite database table if not exists
+def create_table():
+    conn = sqlite3.connect('student_data.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS students (
+                    rollno INTEGER PRIMARY KEY,
+                    name TEXT,
+                    gender TEXT,
+                    dob TEXT,
+                    class TEXT,
+                    contact TEXT,
+                    fathersnm TEXT,
+                    address TEXT)''')
+    conn.commit()
+    conn.close()
+
+# Function to validate roll number input
+def validate_rollno(new_value):
+    if new_value.isdigit() or new_value == "":
+        return True
+    else:
+        messagebox.showerror("Error", "Roll No. should contain only numbers.")
+        return False
+
+# Function to validate name input
+def validate_name(new_value):
+    if re.match("^[a-zA-Z ]*$", new_value):
+        return True
+    else:
+        messagebox.showerror("Error", "Name should contain only alphabets.")
+        return False
+
+# Function to validate date of birth input
+def validate_dob(new_value):
+    if re.match("^\\d{2}-\\d{2}-\\d{4}$", new_value) or new_value == "":
+        return True
+    else:
+        messagebox.showerror("Error", "DOB should be in format DD-MM-YYYY.")
+        return False
+
+# Function to validate contact number input
+def validate_contact(new_value):
+    if new_value.isdigit() and len(new_value) == 10 or new_value == "":
+        return True
+    else:
+        messagebox.showerror("Error", "Contact should be a 10-digit number.")
+        return False
+
+# Function to validate father's name input
+def validate_fathersnm(new_value):
+    if re.match("^[a-zA-Z ]*$", new_value) or new_value == "":
+        return True
+    else:
+        messagebox.showerror("Error", "Father's Name should contain only alphabets.")
+        return False
+
+# Function to validate gender input
+def validate_gender(new_value):
+    if new_value.lower() in ['male', 'female'] or new_value == "":
+        return True
+    else:
+        messagebox.showerror("Error", "Gender should be either 'Male' or 'Female'.")
+        return False
+
+# Function to add student data to the database
+def add_data():
+    roll_no = rollno.get()
+    contact_no = contact.get()
+    dob_value = dob.get()
+
+    # Check for duplicate Roll No.
+    conn = sqlite3.connect('student_data.db')
+    c = conn.cursor()
+    c.execute('SELECT rollno FROM students WHERE rollno=?', (roll_no,))
+    roll_no_exists = c.fetchone()
+    conn.close()
+
+    # Check for duplicate Contact No.
+    conn = sqlite3.connect('student_data.db')
+    c = conn.cursor()
+    c.execute('SELECT contact FROM students WHERE contact=?', (contact_no,))
+    contact_exists = c.fetchone()
+    conn.close()
+
+    # Check for duplicate DOB
+    conn = sqlite3.connect('student_data.db')
+    c = conn.cursor()
+    c.execute('SELECT dob FROM students WHERE dob=?', (dob_value,))
+    dob_exists = c.fetchone()
+    conn.close()
+
+    if roll_no_exists:
+        messagebox.showerror("Error", f"Roll No. {roll_no} already exists.")
+    elif contact_exists:
+        messagebox.showerror("Error", f"Contact No. {contact_no} already exists.")
+    elif dob_exists:
+        messagebox.showerror("Error", f"DOB {dob_value} already exists.")
+    else:
+        data = (
+            roll_no, name.get(), gender.get(), dob_value, class_var.get(),
+            contact_no, fathersnm.get(), address.get()
+        )
+        conn = sqlite3.connect('student_data.db')
+        c = conn.cursor()
+        c.execute('INSERT INTO students VALUES (?, ?, ?, ?, ?, ?, ?, ?)', data)
+        conn.commit()
+        conn.close()
+        messagebox.showinfo("Success", "Data added successfully!")
+        fetch_data()
+
+# Function to fetch student data from the database
+def fetch_data():
+    clear_data()
+    conn = sqlite3.connect('student_data.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM students')
+    rows = c.fetchall()
+    for row in rows:
+        student_table.insert('', 'end', values=row)
+    conn.close()
+
+# Function to update student data in the input fields
+def update_data():
+    # Check if a record is selected
+    selected_item = student_table.selection()
+    if selected_item:
+        # Get data from entry fields
+        data = (
+            name.get(), gender.get(), dob.get(), class_var.get(),
+            contact.get(), fathersnm.get(), address.get(), rollno.get()
+        )
+        # Connect to database
+        conn = sqlite3.connect('student_data.db')
+        c = conn.cursor()
+        # Execute update query
+        c.execute('UPDATE students SET name=?, gender=?, dob=?, class=?, contact=?, fathersnm=?, address=? WHERE rollno=?', data)
+        conn.commit()
+        conn.close()
+        # Update table display
+        fetch_data()
+    else:
+        messagebox.showerror("Error", "Please select a record to update.")
+
+# Function to clear the input fields and treeview
+def clear_data():
+    # Deselect any selected record from the table
+    student_table.selection_remove(student_table.selection())
+    # Clear entry fields
+    for var, entry in zip([rollno, name, class_var, contact, fathersnm, address], entry_widgets):
+        var.set("")
+        entry.delete(0, tk.END)
+        
+# Function to delete student data from the database
+def delete_data():
+    # Check if a record is selected
+    selected_item = student_table.selection()
+    if selected_item:
+        # Get roll number of selected record
+        roll_no = student_table.item(selected_item)['values'][0]
+        # Connect to database
+        conn = sqlite3.connect('student_data.db')
+        c = conn.cursor()
+        # Execute delete query
+        c.execute('DELETE FROM students WHERE rollno=?', (roll_no,))
+        conn.commit()
+        conn.close()
+        # Delete record from table display
+        student_table.delete(selected_item)
+    else:
+        messagebox.showerror("Error", "Please select a record to delete.")
+
+
+# Function to search for student data in the treeview
+def search_data():
+    search_text = search_entry.get().strip().lower()
+    search_column = search_in.get()
+
+    student_table.selection_remove(student_table.selection())
+
+    for item in student_table.get_children():
+        values = student_table.item(item, 'values')
+        if search_text in str(values).lower() and search_text != "":
+            student_table.selection_add(item)
+            student_table.focus(item)
+            student_table.see(item)
+            show_selected_data(values)
+            return
+    messagebox.showinfo("Not Found", "Data not found for the given search criteria.")
+
+# Function to display selected student data in the input fields
+def show_selected_data(values):
+    rollno.set(values[0])
+    name.set(values[1])
+    gender.set(values[2])
+    dob.set(values[3])
+    class_var.set(values[4])
+    contact.set(values[5])
+    fathersnm.set(values[6])
+    address.set(values[7])
+
+# Function to save student data to a Word document (.docx)
+def save_data_to_docx():
+    conn = sqlite3.connect('student_data.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM students')
+    rows = c.fetchall()
+    conn.close()
+
+    doc = Document()
+    doc.add_heading('Student Data', level=1)
+
+    table = doc.add_table(rows=1,cols=8)
+    table.autofit = True
+
+    # Add table headers
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'Roll No.'
+    hdr_cells[1].text = 'Name'
+    hdr_cells[2].text = 'Gender'
+    hdr_cells[3].text = 'DOB'
+    hdr_cells[4].text = 'Class'
+    hdr_cells[5].text = 'Contact'
+    hdr_cells[6].text = "Father's Name"
+    hdr_cells[7].text = 'Address'
+
+    # Add table data
+    for row in rows:
+        row_cells = table.add_row().cells
+        for i, value in enumerate(row):
+            row_cells[i].text = str(value)
+
+    # Save the file to the desktop
+    desktop_path = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
+    file_path = os.path.join(desktop_path, 'student_data.docx')
+    doc.save(file_path)
+    
+    messagebox.showinfo("Success", "Data saved to Word document successfully!")
+    
+# GUI Setup
+win = tk.Tk()
+win.geometry("1575x700+0+0")
+win.title("Student Profile Manager")
+win.configure(bg="lightblue")
+
+# Title Label
+title_label = tk.Label(win, text="Student Profile Manager", font=("Algerian", 30, "bold"), borderwidth=12, relief=tk.GROOVE, bg=("lightblue"), fg="black")
+title_label.pack(side=tk.TOP, fill=tk.X)
+
+# Detail Frame
+detail_frame = tk.LabelFrame(win, text="Enter Details", font=("Times new roman", 20), bd=12, relief=tk.GROOVE, bg="lightblue", fg="black")
+detail_frame.place(x=12, y=85, width=650, height=575)
+
+# Data Frame
+data_frame = tk.Frame(win, bd=12, bg="lightblue", relief=tk.GROOVE)
+data_frame.place(x=680, y=95, width=850, height=570)
+
+# String Variables
+rollno = tk.StringVar()
+name = tk.StringVar()
+class_var = tk.StringVar()
+contact = tk.StringVar()
+fathersnm = tk.StringVar()
+address = tk.StringVar()
+gender = tk.StringVar()
+dob = tk.StringVar()
+
+# Entry Fields
+entries = [
+    ("Roll No", rollno, validate_rollno), ("Name", name, validate_name),
+    ("Gender", gender, validate_gender), ("D.O.B", dob, validate_dob), ("Class", class_var, None),
+    ("Contact", contact, validate_contact), ("Father's Name", fathersnm, validate_fathersnm),
+    ("Address", address, None)
+]
+
+entry_widgets = []
+
+for i, (label_text, var, validation) in enumerate(entries):
+    label = tk.Label(detail_frame, text=label_text, font="Timesnewroman", bg="lightblue", fg="black")
+    label.grid(row=i, column=0, padx=2, pady=2)
+    entry = tk.Entry(detail_frame, bd=7, font="Timesnewroman", textvariable=var)
+    entry.grid(row=i, column=1, padx=2, pady=2)
+    if validation:
+        entry.config(validate='focusout', validatecommand=(win.register(validation), '%P'))
+    entry_widgets.append(entry)
+
+# Button Frame
+btn_frame = tk.Frame(detail_frame, bg="lightblue", bd=10, relief=tk.GROOVE)
+btn_frame.place(x=15, y=370, width=565, height=120)
+
+add_btn = tk.Button(btn_frame, bg="blue", fg="white", text="Add", bd=7, font=("Arial", 13), width=12, command=add_data)
+add_btn.pack(side=tk.LEFT, padx=2, pady=2)
+
+update_btn = tk.Button(btn_frame, bg="blue", fg="white", text="Update", bd=7, font=("Arial", 13), width=12, command=update_data)
+update_btn.pack(side=tk.LEFT, padx=3, pady=2)
+
+delete_btn = tk.Button(btn_frame, bg="blue", fg="white", text="Delete", bd=7, font=("Arial", 13), width=12, command=delete_data)
+delete_btn.pack(side=tk.LEFT, padx=4, pady=3)
+
+clear_btn = tk.Button(btn_frame, bg="blue", fg="white", text="Clear", bd=7, font=("Arial", 13), width=12, command=clear_data)
+clear_btn.pack(side=tk.LEFT, padx=5, pady=4)
+
+# Search Frame
+search_frame = tk.Frame(data_frame, bg="lightblue", bd=10, relief=tk.GROOVE)
+search_frame.pack(side=tk.TOP, fill=tk.X)
+
+search_lbl = tk.Label(search_frame, text="Search", bg="lightblue", fg="black", font=("Times new roman", 14))
+search_lbl.grid(row=0, column=0, padx=12, pady=2)
+
+search_in = ttk.Combobox(search_frame, font=("Times new roman", 14), state="readonly")
+search_in['values'] = ("Name", "Roll No", "Contact", "Father's Name", "Class", "D.O.B")
+search_in.grid(row=0, column=1, padx=12, pady=2)
+
+search_entry = tk.Entry(search_frame, font=("Times new roman", 14))
+search_entry.grid(row=0, column=2, padx=12, pady=2)
+
+search_btn = tk.Button(search_frame, text="Search", font=("Times new roman", 13), bd=9, width=7, bg="blue", fg="white", command=search_data)
+search_btn.grid(row=0, column=3, padx=12, pady=2)
+
+# Save to Docx Button
+save_btn = tk.Button(search_frame, bg="blue", fg="white", text="Save", bd=7, font=("Arial", 13), width=15, command=save_data_to_docx)
+save_btn.grid(row=0, column=4, padx=5, pady=4)
+
+# Main Frame
+main_frame = tk.Frame(data_frame, bg="lightblue", bd=11, relief=tk.GROOVE)
+main_frame.place(x=0, y=70, width=825, height=475) 
+
+# Scrollbars
+y_scroll = tk.Scrollbar(main_frame, orient=tk.VERTICAL)
+x_scroll = tk.Scrollbar(main_frame, orient=tk.HORIZONTAL)
+
+# Treeview
+student_table = ttk.Treeview(main_frame, columns=("Roll No.", "Name", "Gender", "D.O.B", "Class", "Contact", "Father's Name", "Address"), yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+y_scroll.config(command=student_table.yview)
+x_scroll.config(command=student_table.xview)
+
+y_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+x_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+
+student_table.heading("Roll No.", text="Roll No.")
+student_table.heading("Name", text="Name")
+student_table.heading("Gender", text="Gender")
+student_table.heading("D.O.B", text="D.O.B")
+student_table.heading("Class", text="Class")
+student_table.heading("Contact", text="Contact")
+student_table.heading("Father's Name", text="Father's Name")
+student_table.heading("Address", text="Address")
+
+student_table['show'] = 'headings'
+
+for col in ("Roll No.", "Name", "Gender", "D.O.B", "Class", "Contact", "Father's Name", "Address"):
+    student_table.column(col, width=100)
+
+student_table.pack(fill=tk.BOTH, expand=True)
+
+# Initialize database and populate table
+create_table()
+fetch_data()
+
+win.mainloop()
+
+
